@@ -93,6 +93,26 @@ Override it with `--dart-define` when needed:
 flutter run --dart-define=WS_URL=ws://127.0.0.1:8000/ws/vehicle
 ```
 
+Choose the dashboard data mode with `DATA_MODE`. The default is `websocket`.
+
+WebSocket mode:
+
+```powershell
+flutter run -d chrome --dart-define=DATA_MODE=websocket --dart-define=WS_URL=ws://127.0.0.1:8000/ws/vehicle
+```
+
+HTTP polling mode:
+
+```powershell
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=DATA_MODE=http --dart-define=API_URL=http://192.168.5.214:8000/api/mock/vehicle
+```
+
+Local demo mode:
+
+```powershell
+flutter run -d chrome --dart-define=DATA_MODE=demo
+```
+
 ## Secret Handling
 
 Do not commit real Tesla credentials, access tokens, refresh tokens, client secrets, Apple certificates, or other private keys. Use local environment files for development secrets and keep `.env` files out of version control.

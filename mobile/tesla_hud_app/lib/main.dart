@@ -1,12 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
+
+const String dataModeName = String.fromEnvironment(
+  'DATA_MODE',
+  defaultValue: 'websocket',
+);
 
 const String defaultWebSocketUrl = String.fromEnvironment(
   'WS_URL',
   defaultValue: 'ws://127.0.0.1:8000/ws/vehicle',
+);
+
+const String defaultApiUrl = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'http://127.0.0.1:8000/api/mock/vehicle',
 );
 
 void main() {
@@ -30,7 +42,11 @@ class TeslaHudApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF05070A),
         useMaterial3: true,
       ),
-      home: const DashboardScreen(webSocketUrl: defaultWebSocketUrl),
+      home: const DashboardScreen(
+        dataModeName: dataModeName,
+        webSocketUrl: defaultWebSocketUrl,
+        apiUrl: defaultApiUrl,
+      ),
     );
   }
 }
@@ -89,12 +105,33 @@ class MediaInfo {
   }
 }
 
-enum ConnectionStateLabel { loading, connected, disconnected }
+enum DataMode {
+  websocket,
+  http,
+  demo;
+
+  static DataMode fromName(String name) {
+    return switch (name.toLowerCase()) {
+      'http' => DataMode.http,
+      'demo' => DataMode.demo,
+      _ => DataMode.websocket,
+    };
+  }
+}
+
+enum ConnectionStateLabel { loading, connected, disconnected, http, demo }
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.webSocketUrl});
+  const DashboardScreen({
+    super.key,
+    required this.dataModeName,
+    required this.webSocketUrl,
+    required this.apiUrl,
+  });
 
+  final String dataModeName;
   final String webSocketUrl;
+  final String apiUrl;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -103,26 +140,49 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSubscription;
+  Timer? _dataTimer;
   DashboardData? _dashboardData;
   ConnectionStateLabel _connectionState = ConnectionStateLabel.loading;
   String? _connectionMessage;
 
+  DataMode get _dataMode => DataMode.fromName(widget.dataModeName);
+
   @override
   void initState() {
     super.initState();
-    _connect();
+    _startDataMode();
   }
 
   @override
   void dispose() {
+    _dataTimer?.cancel();
     unawaited(_socketSubscription?.cancel());
     unawaited(_socket?.sink.close());
     super.dispose();
   }
 
-  Future<void> _connect() async {
+  Future<void> _startDataMode() async {
+    _dataTimer?.cancel();
     await _socketSubscription?.cancel();
     await _socket?.sink.close();
+    _socketSubscription = null;
+    _socket = null;
+
+    switch (_dataMode) {
+      case DataMode.websocket:
+        await _connectWebSocket();
+        return;
+      case DataMode.http:
+        _startHttpPolling();
+        return;
+      case DataMode.demo:
+        _startDemoMode();
+        return;
+    }
+  }
+
+  Future<void> _connectWebSocket() async {
+    _dataTimer?.cancel();
 
     if (!mounted) {
       return;
@@ -174,13 +234,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _handleSocketMessage(dynamic message) {
+    _handleDashboardMessage(message, ConnectionStateLabel.connected);
+  }
+
+  void _handleDashboardMessage(dynamic message, ConnectionStateLabel state) {
     if (message is! String) {
       return;
     }
 
-    final decoded = jsonDecode(message);
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(message);
+    } catch (error) {
+      debugPrint('Tesla HUD failed to decode dashboard payload: $error');
+      return;
+    }
+
     if (decoded is! Map<String, dynamic>) {
-      debugPrint('Tesla HUD ignored non-object WebSocket payload: $message');
+      debugPrint('Tesla HUD ignored non-object dashboard payload: $message');
       return;
     }
 
@@ -190,7 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() {
       _dashboardData = DashboardData.fromJson(decoded);
-      _connectionState = ConnectionStateLabel.connected;
+      _connectionState = state;
       _connectionMessage = null;
     });
   }
@@ -207,6 +278,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _startHttpPolling() {
+    debugPrint('Tesla HUD polling HTTP API: ${widget.apiUrl}');
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _connectionState = ConnectionStateLabel.loading;
+      _connectionMessage = 'Polling ${widget.apiUrl}';
+    });
+
+    unawaited(_fetchHttpDashboardData());
+    _dataTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_fetchHttpDashboardData());
+    });
+  }
+
+  Future<void> _fetchHttpDashboardData() async {
+    try {
+      final response = await http
+          .get(Uri.parse(widget.apiUrl))
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('HTTP ${response.statusCode}');
+      }
+
+      _handleDashboardMessage(response.body, ConnectionStateLabel.http);
+    } catch (error) {
+      debugPrint('Tesla HUD HTTP polling failed: $error');
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _connectionState = ConnectionStateLabel.disconnected;
+        _connectionMessage = 'HTTP polling failed: $error';
+      });
+    }
+  }
+
+  void _startDemoMode() {
+    debugPrint('Tesla HUD running in local demo mode');
+    _emitDemoDashboardData();
+    _dataTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _emitDemoDashboardData();
+    });
+  }
+
+  void _emitDemoDashboardData() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _dashboardData = _buildDemoDashboardData();
+      _connectionState = ConnectionStateLabel.demo;
+      _connectionMessage = null;
+    });
+  }
+
+  DashboardData _buildDemoDashboardData() {
+    final now = DateTime.now().millisecondsSinceEpoch / 1000;
+    final tick = now.floor();
+    final speed = 54 + (sin(now / 2.5) * 18).round();
+    final mediaStatus = tick % 10 < 7 ? 'playing' : 'paused';
+
+    return DashboardData(
+      timestamp: now,
+      speedKmh: speed,
+      gear: speed == 0 ? 'P' : 'D',
+      batteryPercent: 78 - ((tick ~/ 20) % 6),
+      rangeKm: 332 - ((tick ~/ 3) % 18),
+      media: MediaInfo(
+        title: 'Local Demo',
+        artist: 'Tesla HUD',
+        status: mediaStatus,
+        source: 'demo',
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dashboardData = _dashboardData;
@@ -221,8 +375,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _Header(
                 state: _connectionState,
                 message: _connectionMessage,
-                webSocketUrl: widget.webSocketUrl,
-                onReconnect: _connect,
+                sourceUrl: switch (_dataMode) {
+                  DataMode.websocket => widget.webSocketUrl,
+                  DataMode.http => widget.apiUrl,
+                  DataMode.demo => 'Local demo data',
+                },
+                onReconnect: _startDataMode,
               ),
               const SizedBox(height: 24),
               Expanded(
@@ -242,23 +400,27 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.state,
     required this.message,
-    required this.webSocketUrl,
+    required this.sourceUrl,
     required this.onReconnect,
   });
 
   final ConnectionStateLabel state;
   final String? message;
-  final String webSocketUrl;
+  final String sourceUrl;
   final VoidCallback onReconnect;
 
   @override
   Widget build(BuildContext context) {
-    final isConnected = state == ConnectionStateLabel.connected;
+    final isConnected = state == ConnectionStateLabel.connected ||
+        state == ConnectionStateLabel.http ||
+        state == ConnectionStateLabel.demo;
     final statusColor = isConnected ? const Color(0xFF30F2A0) : Colors.amber;
     final statusText = switch (state) {
       ConnectionStateLabel.loading => 'Connecting',
       ConnectionStateLabel.connected => 'Connected',
       ConnectionStateLabel.disconnected => 'Disconnected',
+      ConnectionStateLabel.http => 'http',
+      ConnectionStateLabel.demo => 'demo',
     };
 
     return Row(
@@ -278,7 +440,7 @@ class _Header extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                message ?? webSocketUrl,
+                message ?? sourceUrl,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.58)),
               ),
