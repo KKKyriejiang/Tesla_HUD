@@ -41,6 +41,8 @@ This repository currently contains the initial monorepo structure and a mock-fir
 
 ## Backend Development on Windows
 
+Backend commands must be run from the `backend` directory.
+
 From PowerShell:
 
 ```powershell
@@ -72,46 +74,116 @@ ws://127.0.0.1:8000/ws/vehicle
 
 ## Mobile Development
 
-The Flutter app lives in `mobile/tesla_hud_app` and connects to the backend WebSocket.
+Flutter commands must be run from the `mobile/tesla_hud_app` directory.
 
 From PowerShell:
 
 ```powershell
 cd mobile\tesla_hud_app
-flutter run
-```
-
-The default WebSocket URL is:
-
-```text
-ws://127.0.0.1:8000/ws/vehicle
-```
-
-Override it with `--dart-define` when needed:
-
-```powershell
-flutter run --dart-define=WS_URL=ws://127.0.0.1:8000/ws/vehicle
+flutter pub get
 ```
 
 Choose the dashboard data mode with `DATA_MODE`. The default is `websocket`.
 
-WebSocket mode:
+### Demo Mode
+
+Demo mode runs entirely in Flutter and does not require the backend.
+
+```powershell
+flutter run -d chrome --dart-define=DATA_MODE=demo
+```
+
+### Local WebSocket Mode
+
+Start the backend first from `backend`, then run the Flutter app from `mobile/tesla_hud_app`.
 
 ```powershell
 flutter run -d chrome --dart-define=DATA_MODE=websocket --dart-define=WS_URL=ws://127.0.0.1:8000/ws/vehicle
 ```
 
-HTTP polling mode:
+### iPhone HTTP Mode
+
+Use HTTP mode when testing the Flutter web app from iPhone Safari. Replace `<WINDOWS_IP>` with the LAN IP address of the Windows machine running the backend.
+
+Start the backend from `backend`:
 
 ```powershell
-flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=DATA_MODE=http --dart-define=API_URL=http://192.168.5.214:8000/api/mock/vehicle
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Local demo mode:
+Start Flutter from `mobile/tesla_hud_app`:
 
 ```powershell
-flutter run -d chrome --dart-define=DATA_MODE=demo
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=DATA_MODE=http --dart-define=API_URL=http://<WINDOWS_IP>:8000/api/mock/vehicle
 ```
+
+Then open this from iPhone Safari:
+
+```text
+http://<WINDOWS_IP>:8080
+```
+
+Verify the iPhone can reach the backend directly:
+
+```text
+http://<WINDOWS_IP>:8000/api/mock/vehicle
+```
+
+## Troubleshooting
+
+### No pubspec.yaml file found
+
+Run Flutter commands from `mobile/tesla_hud_app`, not from the repository root.
+
+```powershell
+cd mobile\tesla_hud_app
+flutter pub get
+```
+
+### iPhone cannot access backend
+
+Make sure the backend is running from `backend` with `--host 0.0.0.0`.
+
+```powershell
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+On the iPhone, test the backend URL directly in Safari:
+
+```text
+http://<WINDOWS_IP>:8000/api/mock/vehicle
+```
+
+The iPhone and Windows machine must be on the same Wi-Fi or LAN.
+
+### Disconnected status
+
+For iPhone Safari, prefer `DATA_MODE=http` first. Some local networks or browsers may block WebSocket traffic even when HTTP works.
+
+Check that the URL passed through `--dart-define` matches the selected mode:
+
+- `DATA_MODE=websocket` uses `WS_URL=ws://.../ws/vehicle`
+- `DATA_MODE=http` uses `API_URL=http://.../api/mock/vehicle`
+- `DATA_MODE=demo` does not use the backend
+
+### Wrong IP address
+
+Do not use `127.0.0.1` from iPhone Safari. On the iPhone, `127.0.0.1` means the iPhone itself, not the Windows machine.
+
+Find the Windows LAN IP address with:
+
+```powershell
+ipconfig
+```
+
+Use the IPv4 address for the active Wi-Fi or Ethernet adapter.
+
+### Windows firewall
+
+If the iPhone cannot open `http://<WINDOWS_IP>:8000/api/mock/vehicle`, Windows Firewall may be blocking inbound connections.
+
+Allow inbound access for the backend port `8000` and Flutter web-server port `8080`, or allow the Python and Flutter/Dart processes when Windows prompts for network access.
 
 ## Secret Handling
 
