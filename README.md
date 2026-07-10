@@ -9,6 +9,8 @@ This app is not a replacement for Tesla's official vehicle display and must not 
 ```text
 backend/
   .env.example
+  main.py
+  requirements.txt
 mobile/
 docs/
 AGENTS.md
@@ -35,7 +37,61 @@ README.md
 
 ## Current Status
 
-This repository currently contains the initial monorepo structure only. Tesla API integration has not been implemented.
+This repository currently contains the initial monorepo structure and a mock-first FastAPI backend. Tesla API integration has not been implemented.
+
+## Backend Development on Windows
+
+From PowerShell:
+
+```powershell
+cd backend
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Health check:
+
+```text
+http://127.0.0.1:8000
+```
+
+Mock vehicle dashboard data:
+
+```text
+http://127.0.0.1:8000/api/mock/vehicle
+```
+
+Mock vehicle WebSocket:
+
+```text
+ws://127.0.0.1:8000/ws/vehicle
+```
+
+## Mobile Development
+
+The Flutter app lives in `mobile/tesla_hud_app` and connects to the backend WebSocket.
+
+From PowerShell:
+
+```powershell
+cd mobile\tesla_hud_app
+flutter run
+```
+
+The default WebSocket URL is:
+
+```text
+ws://127.0.0.1:8000/ws/vehicle
+```
+
+Override it with `--dart-define` when needed:
+
+```powershell
+flutter run --dart-define=WS_URL=ws://127.0.0.1:8000/ws/vehicle
+```
 
 ## Secret Handling
 
