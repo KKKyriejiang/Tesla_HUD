@@ -105,6 +105,8 @@ flutter run -d chrome --dart-define=DATA_MODE=websocket --dart-define=WS_URL=ws:
 
 Use HTTP mode when testing the Flutter web app from iPhone Safari. Replace `<WINDOWS_IP>` with the LAN IP address of the Windows machine running the backend.
 
+iPhone Safari Web cannot reliably force landscape orientation from Flutter. Rotate the phone manually; portrait mode shows a rotate prompt, and landscape mode shows the full HUD.
+
 Start the backend from `backend`:
 
 ```powershell
@@ -166,6 +168,16 @@ Check that the URL passed through `--dart-define` matches the selected mode:
 - `DATA_MODE=websocket` uses `WS_URL=ws://.../ws/vehicle`
 - `DATA_MODE=http` uses `API_URL=http://.../api/mock/vehicle`
 - `DATA_MODE=demo` does not use the backend
+
+### Mobile overflow or max pixel display issues
+
+Rotate the iPhone to landscape before using HUD mode. Portrait mode intentionally shows:
+
+```text
+Rotate your phone for HUD mode
+```
+
+If landscape still looks too large, refresh Safari after rotating the phone. Also make sure Safari is not zoomed in and that the app is running the latest Flutter build after code changes.
 
 ### Wrong IP address
 

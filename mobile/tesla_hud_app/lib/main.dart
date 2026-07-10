@@ -364,46 +364,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final dashboardData = _dashboardData;
+    final sourceUrl = switch (_dataMode) {
+      DataMode.websocket => widget.webSocketUrl,
+      DataMode.http => widget.apiUrl,
+      DataMode.demo => 'Local demo data',
+    };
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _Header(
-                state: _connectionState,
-                message: _connectionMessage,
-                sourceUrl: switch (_dataMode) {
-                  DataMode.websocket => widget.webSocketUrl,
-                  DataMode.http => widget.apiUrl,
-                  DataMode.demo => 'Local demo data',
-                },
-                onReconnect: _startDataMode,
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: dashboardData == null
-                    ? _EmptyState(state: _connectionState)
-                    : _Dashboard(data: dashboardData),
-              ),
-            ],
-          ),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            if (orientation == Orientation.portrait) {
+              return const _RotatePhoneScreen();
+            }
+
+            return _LandscapeHud(
+              data: dashboardData,
+              dataMode: _dataMode,
+              state: _connectionState,
+              message: _connectionMessage,
+              sourceUrl: sourceUrl,
+              onReconnect: _startDataMode,
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+class _RotatePhoneScreen extends StatelessWidget {
+  const _RotatePhoneScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.screen_rotation_rounded,
+              color: Color(0xFF00E5FF),
+              size: 44,
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Rotate your phone for HUD mode',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Landscape mode keeps the dashboard compact for mobile web.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LandscapeHud extends StatelessWidget {
+  const _LandscapeHud({
+    required this.data,
+    required this.dataMode,
     required this.state,
     required this.message,
     required this.sourceUrl,
     required this.onReconnect,
   });
 
+  final DashboardData? data;
+  final DataMode dataMode;
   final ConnectionStateLabel state;
   final String? message;
   final String sourceUrl;
@@ -411,226 +454,297 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isConnected = state == ConnectionStateLabel.connected ||
-        state == ConnectionStateLabel.http ||
-        state == ConnectionStateLabel.demo;
-    final statusColor = isConnected ? const Color(0xFF30F2A0) : Colors.amber;
-    final statusText = switch (state) {
-      ConnectionStateLabel.loading => 'Connecting',
-      ConnectionStateLabel.connected => 'Connected',
-      ConnectionStateLabel.disconnected => 'Disconnected',
-      ConnectionStateLabel.http => 'http',
-      ConnectionStateLabel.demo => 'demo',
-    };
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dashboardData = data;
+        final shortSide = min(constraints.maxWidth, constraints.maxHeight);
+        final padding = shortSide < 390 ? 8.0 : 14.0;
+        final gap = shortSide < 390 ? 8.0 : 12.0;
+        final mediaHeight =
+            (constraints.maxHeight * 0.17).clamp(48.0, 72.0).toDouble();
+        final metricWidth =
+            (constraints.maxWidth * 0.24).clamp(132.0, 230.0).toDouble();
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
+        return Padding(
+          padding: EdgeInsets.all(padding),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Tesla HUD',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
-                ),
+              _StatusBar(
+                dataMode: dataMode,
+                state: state,
+                message: message,
+                sourceUrl: sourceUrl,
+                onReconnect: onReconnect,
               ),
-              const SizedBox(height: 6),
-              Text(
-                message ?? sourceUrl,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.58)),
+              SizedBox(height: gap),
+              Expanded(
+                child: dashboardData == null
+                    ? _EmptyState(state: state)
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _SpeedPanel(data: dashboardData)),
+                          SizedBox(width: gap),
+                          SizedBox(
+                            width: metricWidth,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Battery',
+                                    value:
+                                        '${dashboardData.batteryPercent.round()}%',
+                                    icon: Icons.battery_charging_full_rounded,
+                                  ),
+                                ),
+                                SizedBox(height: gap),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Range',
+                                    value:
+                                        '${dashboardData.rangeKm.round()} km',
+                                    icon: Icons.route_rounded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              SizedBox(height: gap),
+              SizedBox(
+                height: mediaHeight,
+                child: dashboardData == null
+                    ? const SizedBox.shrink()
+                    : _MediaBar(media: dashboardData.media),
               ),
             ],
           ),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            _StatusPill(label: statusText, color: statusColor),
-            if (!isConnected) ...[
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: onReconnect,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Retry'),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _Dashboard extends StatelessWidget {
-  const _Dashboard({required this.data});
-
-  final DashboardData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 720;
-
-        return Column(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Row(
-                children: [
-                  Expanded(flex: 3, child: _SpeedGauge(speed: data.speedKmh)),
-                  const SizedBox(width: 14),
-                  Expanded(child: _GearTile(gear: data.gear)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              flex: 2,
-              child: isCompact
-                  ? Column(
-                      children: [
-                        Expanded(child: _BatteryTile(data: data)),
-                        const SizedBox(height: 14),
-                        Expanded(child: _MediaTile(media: data.media)),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Expanded(child: _BatteryTile(data: data)),
-                        const SizedBox(width: 14),
-                        Expanded(child: _MediaTile(media: data.media)),
-                      ],
-                    ),
-            ),
-          ],
         );
       },
     );
   }
 }
 
-class _SpeedGauge extends StatelessWidget {
-  const _SpeedGauge({required this.speed});
+class _StatusBar extends StatelessWidget {
+  const _StatusBar({
+    required this.dataMode,
+    required this.state,
+    required this.message,
+    required this.sourceUrl,
+    required this.onReconnect,
+  });
 
-  final num speed;
+  final DataMode dataMode;
+  final ConnectionStateLabel state;
+  final String? message;
+  final String sourceUrl;
+  final VoidCallback onReconnect;
 
   @override
   Widget build(BuildContext context) {
-    return _HudPanel(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            speed.round().toString(),
-            style: const TextStyle(
-              color: Color(0xFF00E5FF),
-              fontSize: 96,
-              fontWeight: FontWeight.w800,
-              height: 0.95,
-              letterSpacing: 0,
-            ),
+    final isHealthy = state == ConnectionStateLabel.connected ||
+        state == ConnectionStateLabel.http ||
+        state == ConnectionStateLabel.demo;
+
+    return Row(
+      children: [
+        const Text(
+          'Tesla HUD',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0,
           ),
-          const SizedBox(height: 8),
-          Text(
-            'km/h',
+        ),
+        const SizedBox(width: 12),
+        _StatusPill(
+          label: '${dataMode.name} - ${_statusText(state)}',
+          color: isHealthy ? const Color(0xFF30F2A0) : Colors.amber,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message ?? sourceUrl,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
-              fontSize: 18,
-              letterSpacing: 0,
+              color: Colors.white.withValues(alpha: 0.52),
+              fontSize: 12,
             ),
           ),
-        ],
-      ),
+        ),
+        if (!isHealthy)
+          IconButton(
+            tooltip: 'Retry',
+            onPressed: onReconnect,
+            icon: const Icon(Icons.refresh, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 36, height: 32),
+          ),
+      ],
     );
+  }
+
+  String _statusText(ConnectionStateLabel state) {
+    return switch (state) {
+      ConnectionStateLabel.loading => 'connecting',
+      ConnectionStateLabel.connected => 'connected',
+      ConnectionStateLabel.disconnected => 'disconnected',
+      ConnectionStateLabel.http => 'http',
+      ConnectionStateLabel.demo => 'demo',
+    };
   }
 }
 
-class _GearTile extends StatelessWidget {
-  const _GearTile({required this.gear});
-
-  final String gear;
-
-  @override
-  Widget build(BuildContext context) {
-    return _HudPanel(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            gear,
-            style: const TextStyle(
-              color: Color(0xFF30F2A0),
-              fontSize: 64,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _PanelLabel(label: 'Gear'),
-        ],
-      ),
-    );
-  }
-}
-
-class _BatteryTile extends StatelessWidget {
-  const _BatteryTile({required this.data});
+class _SpeedPanel extends StatelessWidget {
+  const _SpeedPanel({required this.data});
 
   final DashboardData data;
 
   @override
   Widget build(BuildContext context) {
-    final battery = data.batteryPercent.clamp(0, 100).toDouble();
-
     return _HudPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const _PanelLabel(label: 'Battery'),
-          const SizedBox(height: 12),
-          Text(
-            '${battery.round()}%',
-            style: const TextStyle(
-              color: Color(0xFF30F2A0),
-              fontSize: 42,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(5),
-            child: LinearProgressIndicator(
-              minHeight: 10,
-              value: battery / 100,
-              backgroundColor: Colors.white.withValues(alpha: 0.12),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFF30F2A0)),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${data.rangeKm.round()} km range',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
-              fontSize: 16,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final labelSize =
+              (constraints.maxHeight * 0.12).clamp(14.0, 22.0).toDouble();
+          final gearSize =
+              (constraints.maxHeight * 0.22).clamp(28.0, 54.0).toDouble();
+
+          return Column(
+            children: [
+              Flexible(
+                flex: 2,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    children: [
+                      Text(
+                        data.gear,
+                        style: TextStyle(
+                          color: const Color(0xFF30F2A0),
+                          fontSize: gearSize,
+                          fontWeight: FontWeight.w800,
+                          height: 0.95,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                      Text(
+                        'GEAR',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.54),
+                          fontSize: labelSize,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Flexible(
+                flex: 5,
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: Text(
+                    data.speedKmh.round().toString(),
+                    style: const TextStyle(
+                      color: Color(0xFF00E5FF),
+                      fontSize: 120,
+                      fontWeight: FontWeight.w900,
+                      height: 0.9,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'km/h',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: labelSize + 2,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _MediaTile extends StatelessWidget {
-  const _MediaTile({required this.media});
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return _HudPanel(
+      padding: const EdgeInsets.all(10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final iconSize =
+              (constraints.maxHeight * 0.22).clamp(16.0, 26.0).toDouble();
+          final valueSize =
+              (constraints.maxHeight * 0.34).clamp(20.0, 38.0).toDouble();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: const Color(0xFF30F2A0), size: iconSize),
+                  const SizedBox(width: 6),
+                  Expanded(child: _PanelLabel(label: label)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      style: TextStyle(
+                        color: const Color(0xFF30F2A0),
+                        fontSize: valueSize,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MediaBar extends StatelessWidget {
+  const _MediaBar({required this.media});
 
   final MediaInfo media;
 
@@ -639,48 +753,50 @@ class _MediaTile extends StatelessWidget {
     final isPlaying = media.status == 'playing';
 
     return _HudPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(
-                isPlaying ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                color: const Color(0xFF00E5FF),
-                size: 26,
-              ),
-              const SizedBox(width: 8),
-              const _PanelLabel(label: 'Media'),
-            ],
+          Icon(
+            isPlaying ? Icons.play_arrow_rounded : Icons.pause_rounded,
+            color: const Color(0xFF00E5FF),
+            size: 26,
           ),
-          const SizedBox(height: 16),
-          Text(
-            media.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  media.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  media.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.64),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            media.artist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(width: 10),
           Text(
             '${media.status} - ${media.source}',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.52),
-              fontSize: 13,
+              color: Colors.white.withValues(alpha: 0.54),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -726,15 +842,19 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _HudPanel extends StatelessWidget {
-  const _HudPanel({required this.child});
+  const _HudPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(14),
+  });
 
   final Widget child;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: padding,
       decoration: BoxDecoration(
         color: const Color(0xFF0B1118),
         borderRadius: BorderRadius.circular(8),
