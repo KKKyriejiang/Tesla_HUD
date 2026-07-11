@@ -21,6 +21,8 @@ const String defaultApiUrl = String.fromEnvironment(
   defaultValue: 'http://127.0.0.1:8000/api/mock/vehicle',
 );
 
+const double mobileWidthBreakpoint = 700;
+
 void main() {
   runApp(const TeslaHudApp());
 }
@@ -372,9 +374,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: OrientationBuilder(
-          builder: (context, orientation) {
-            if (orientation == Orientation.portrait) {
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final height = constraints.maxHeight;
+            final isPortrait = height > width;
+            final isMobileWidth = width < mobileWidthBreakpoint;
+
+            if (isMobileWidth && isPortrait) {
               return const _RotatePhoneScreen();
             }
 
@@ -464,6 +471,7 @@ class _LandscapeHud extends StatelessWidget {
             (constraints.maxHeight * 0.17).clamp(48.0, 72.0).toDouble();
         final metricWidth =
             (constraints.maxWidth * 0.24).clamp(132.0, 230.0).toDouble();
+        final useCompactStack = constraints.maxWidth < mobileWidthBreakpoint;
 
         return Padding(
           padding: EdgeInsets.all(padding),
@@ -481,37 +489,72 @@ class _LandscapeHud extends StatelessWidget {
               Expanded(
                 child: dashboardData == null
                     ? _EmptyState(state: state)
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: _SpeedPanel(data: dashboardData)),
-                          SizedBox(width: gap),
-                          SizedBox(
-                            width: metricWidth,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: _MetricCard(
-                                    label: 'Battery',
-                                    value:
-                                        '${dashboardData.batteryPercent.round()}%',
-                                    icon: Icons.battery_charging_full_rounded,
-                                  ),
+                    : useCompactStack
+                        ? Column(
+                            children: [
+                              Expanded(
+                                flex: 4,
+                                child: _SpeedPanel(data: dashboardData),
+                              ),
+                              SizedBox(height: gap),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _MetricCard(
+                                        label: 'Battery',
+                                        value:
+                                            '${dashboardData.batteryPercent.round()}%',
+                                        icon: Icons
+                                            .battery_charging_full_rounded,
+                                      ),
+                                    ),
+                                    SizedBox(width: gap),
+                                    Expanded(
+                                      child: _MetricCard(
+                                        label: 'Range',
+                                        value:
+                                            '${dashboardData.rangeKm.round()} km',
+                                        icon: Icons.route_rounded,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                SizedBox(height: gap),
-                                Expanded(
-                                  child: _MetricCard(
-                                    label: 'Range',
-                                    value:
-                                        '${dashboardData.rangeKm.round()} km',
-                                    icon: Icons.route_rounded,
-                                  ),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: _SpeedPanel(data: dashboardData)),
+                              SizedBox(width: gap),
+                              SizedBox(
+                                width: metricWidth,
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: _MetricCard(
+                                        label: 'Battery',
+                                        value:
+                                            '${dashboardData.batteryPercent.round()}%',
+                                        icon: Icons
+                                            .battery_charging_full_rounded,
+                                      ),
+                                    ),
+                                    SizedBox(height: gap),
+                                    Expanded(
+                                      child: _MetricCard(
+                                        label: 'Range',
+                                        value:
+                                            '${dashboardData.rangeKm.round()} km',
+                                        icon: Icons.route_rounded,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
               ),
               SizedBox(height: gap),
               SizedBox(
