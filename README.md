@@ -66,10 +66,31 @@ Mock vehicle dashboard data:
 http://127.0.0.1:8000/api/mock/vehicle
 ```
 
+Provider-backed dashboard data:
+
+```text
+http://127.0.0.1:8000/api/dashboard
+```
+
 Mock vehicle WebSocket:
 
 ```text
 ws://127.0.0.1:8000/ws/vehicle
+```
+
+The backend uses `DATA_PROVIDER=mock` by default. Mock mode keeps `/api/mock/vehicle`, `/api/dashboard`, and `/ws/vehicle` working without Tesla credentials.
+
+```powershell
+$env:DATA_PROVIDER="mock"
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+`DATA_PROVIDER=tesla` is reserved for future Tesla Fleet API work and currently returns `Tesla provider not implemented yet`.
+
+Run backend tests from `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
 ```
 
 ## Mobile Development
